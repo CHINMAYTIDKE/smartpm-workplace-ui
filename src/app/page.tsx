@@ -3,24 +3,26 @@
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/AuthContext"
+import { Loader2 } from "lucide-react"
 
 export default function Home() {
   const router = useRouter()
-  
-  useEffect(() => {
-    // Simulate checking for authentication
-    const isAuthenticated = true // In a real app, check auth state
-    
-    if (isAuthenticated) {
-      // Redirect to workspaces after a brief moment
-      const timer = setTimeout(() => {
-        router.push("/workspaces")
-      }, 1500)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [router])
+  const { user, loading } = useAuth()
 
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        // Redirect authenticated users to workspaces
+        router.push("/workspaces")
+      } else {
+        // Redirect unauthenticated users to login
+        router.push("/login")
+      }
+    }
+  }, [user, loading, router])
+
+  // Show loading state while checking auth
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-black dark:to-gray-900">
       <div className="flex flex-col items-center gap-8 text-center px-4">
@@ -35,11 +37,7 @@ export default function Home() {
         <p className="text-xl text-muted-foreground max-w-md">
           Your intelligent project management platform
         </p>
-        <div className="flex gap-4 mt-4">
-          <Button size="lg" onClick={() => router.push("/workspaces")}>
-            Enter Workspace
-          </Button>
-        </div>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     </div>
   )

@@ -1,9 +1,10 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import {
   Activity,
@@ -15,49 +16,150 @@ import {
   ArrowRight,
   MessageSquare,
   FileText,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
+import { fetchWithAuth } from "@/lib/utils/api"
+import { toast } from "sonner"
 
-// Mock data
-const stats = [
-  { label: "Active Projects", value: "12", icon: FolderKanban, trend: "+2 this month", color: "text-blue-600" },
-  { label: "Tasks Completed", value: "284", icon: CheckCircle2, trend: "+18% from last week", color: "text-green-600" },
-  { label: "Team Members", value: "45", icon: Users, trend: "3 new members", color: "text-purple-600" },
-  { label: "Pending Tasks", value: "67", icon: Clock, trend: "12 due this week", color: "text-orange-600" },
-]
+interface WorkspaceMember {
+  id: string
+  name: string
+  email: string
+  photoURL: string | null
+  role: "owner" | "admin" | "member"
+  joinedAt: Date
+  status: string
+}
 
-const activeProjects = [
-  { id: 1, name: "Project Alpha", progress: 75, status: "On Track", tasks: 24, members: 8, dueDate: "Apr 15" },
-  { id: 2, name: "Mobile App Redesign", progress: 45, status: "In Progress", tasks: 18, members: 5, dueDate: "Apr 30" },
-  { id: 3, name: "Backend Infrastructure", progress: 90, status: "Nearly Complete", tasks: 12, members: 6, dueDate: "Apr 10" },
-]
-
-const recentActivity = [
-  { user: "John Doe", action: "completed task", target: "API Integration", time: "5 min ago", avatar: "JD" },
-  { user: "Sarah Smith", action: "commented on", target: "Design System v2", time: "1 hour ago", avatar: "SS" },
-  { user: "Mike Johnson", action: "created project", target: "Q2 Marketing Campaign", time: "2 hours ago", avatar: "MJ" },
-  { user: "Emily Brown", action: "uploaded file", target: "Wireframes.fig", time: "3 hours ago", avatar: "EB" },
-]
-
-const teamMembers = [
-  { name: "John Doe", role: "Product Manager", avatar: "JD", status: "online" },
-  { name: "Sarah Smith", role: "Lead Designer", avatar: "SS", status: "online" },
-  { name: "Mike Johnson", role: "Developer", avatar: "MJ", status: "away" },
-  { name: "Emily Brown", role: "UX Researcher", avatar: "EB", status: "offline" },
-]
+interface WorkspaceData {
+  id: string
+  name: string
+  description: string
+  memberCount: number
+  projectCount: number
+}
 
 export default function WorkplaceDashboard() {
   const params = useParams()
   const router = useRouter()
-  const workplaceId = params.id as string
+  const workspaceId = params.id as string
+
+  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null)
+  const [members, setMembers] = useState<WorkspaceMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (workspaceId) {
+      fetchWorkspaceData()
+    }
+  }, [workspaceId])
+
+  const fetchWorkspaceData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch workspace details
+      const workspaceRes = await fetchWithAuth(`/api/workspaces/${workspaceId}`)
+      const workspaceData = await workspaceRes.json()
+
+      if (!workspaceRes.ok) {
+        throw new Error(workspaceData.error || "Failed to fetch workspace")
+      }
+
+      // Fetch workspace members
+      const membersRes = await fetchWithAuth(`/api/workspaces/${workspaceId}/members`)
+      const membersData = await membersRes.json()
+
+      if (!membersRes.ok) {
+        throw new Error(membersData.error || "Failed to fetch members")
+      }
+
+      setWorkspace({
+        id: workspaceData.workspace.id,
+        name: workspaceData.workspace.name,
+        description: workspaceData.workspace.description,
+        memberCount: membersData.totalCount || 0,
+        projectCount: workspaceData.workspace.projectCount || 0,
+      })
+
+      setMembers(membersData.members || [])
+    } catch (err: any) {
+      console.error("Error fetching workspace data:", err)
+      setError(err.message || "Failed to load dashboard")
+      toast.error(err.message || "Failed to load dashboard")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (error || !workspace) {
+    return (
+      <div className="p-6">
+        <Card className="border-destructive">
+          <CardContent className="pt-6 text-center">
+            <p className="text-destructive mb-4">{error || "Failed to load workspace"}</p>
+            <Button onClick={fetchWorkspaceData} variant="outline">
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Calculate stats from real data
+  const stats = [
+    {
+      label: "Active Projects",
+      value: workspace.projectCount.toString(),
+      icon: FolderKanban,
+      trend: workspace.projectCount > 0 ? "Live projects" : "No projects yet",
+      color: "text-blue-600"
+    },
+    {
+      label: "Tasks Completed",
+      value: "0",
+      icon: CheckCircle2,
+      trend: "Coming soon",
+      color: "text-green-600"
+    },
+    {
+      label: "Team Members",
+      value: workspace.memberCount.toString(),
+      icon: Users,
+      trend: `${members.filter(m => m.role === 'owner' || m.role === 'admin').length} admins`,
+      color: "text-purple-600"
+    },
+    {
+      label: "Pending Tasks",
+      value: "0",
+      icon: Clock,
+      trend: "Coming soon",
+      color: "text-orange-600"
+    },
+  ]
+
+  // Show first 4 members for the dashboard
+  const displayMembers = members.slice(0, 4)
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome back! Here's what's happening in your workplace.</p>
+        <p className="text-muted-foreground">Welcome to {workspace.name}! Here's what's happening in your workplace.</p>
       </div>
 
       {/* Stats Grid */}
@@ -82,7 +184,7 @@ export default function WorkplaceDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Active Projects */}
+        {/* Projects Placeholder */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -93,45 +195,18 @@ export default function WorkplaceDashboard() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push(`/workplace/${workplaceId}/projects`)}
+                onClick={() => router.push(`/workplace/${workspaceId}/projects`)}
               >
                 View All
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {activeProjects.map((project) => (
-              <div key={project.id} className="p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold">{project.name}</h3>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        {project.tasks} tasks
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        {project.members} members
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        Due {project.dueDate}
-                      </span>
-                    </div>
-                  </div>
-                  <Badge variant="secondary">{project.status}</Badge>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">{project.progress}%</span>
-                  </div>
-                  <Progress value={project.progress} className="h-2" />
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <div className="text-center py-12 text-muted-foreground">
+              <FolderKanban className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No projects yet. Create your first project to get started!</p>
+            </div>
           </CardContent>
         </Card>
 
@@ -139,39 +214,47 @@ export default function WorkplaceDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Team Members</CardTitle>
-            <CardDescription>Active team members</CardDescription>
+            <CardDescription>{workspace.memberCount} {workspace.memberCount === 1 ? 'member' : 'members'}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {teamMembers.map((member) => (
-              <div key={member.name} className="flex items-center gap-3">
+            {displayMembers.map((member) => (
+              <div key={member.id} className="flex items-center gap-3">
                 <div className="relative">
                   <Avatar className="w-10 h-10">
-                    <AvatarFallback>{member.avatar}</AvatarFallback>
+                    <AvatarImage src={member.photoURL || undefined} alt={member.name} />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                      {member.name.substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
-                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${
-                    member.status === "online" ? "bg-green-500" :
-                    member.status === "away" ? "bg-yellow-500" : "bg-gray-400"
-                  }`} />
+                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background bg-gray-400`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{member.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{member.role}</p>
+                  <p className="text-xs text-muted-foreground truncate capitalize">{member.role}</p>
                 </div>
               </div>
             ))}
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-2"
-              onClick={() => router.push(`/workplace/${workplaceId}/members`)}
-            >
-              View All Members
-            </Button>
+            {members.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No members found</p>
+              </div>
+            )}
+            {members.length > 4 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => router.push(`/workplace/${workspaceId}/members`)}
+              >
+                View All Members ({workspace.memberCount})
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity Placeholder */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -186,22 +269,9 @@ export default function WorkplaceDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentActivity.map((activity, index) => (
-              <div key={index} className="flex items-start gap-3 pb-4 border-b last:border-0 last:pb-0">
-                <Avatar className="w-8 h-8">
-                  <AvatarFallback className="text-xs">{activity.avatar}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">
-                    <span className="font-medium">{activity.user}</span>{" "}
-                    <span className="text-muted-foreground">{activity.action}</span>{" "}
-                    <span className="font-medium">{activity.target}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
-                </div>
-              </div>
-            ))}
+          <div className="text-center py-12 text-muted-foreground">
+            <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>No recent activity. Start collaborating to see updates here!</p>
           </div>
         </CardContent>
       </Card>
