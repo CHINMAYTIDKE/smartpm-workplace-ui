@@ -66,11 +66,14 @@ export async function GET(
             priority: task.priority,
             assignedTo: task.assignedTo,
             assignee: task.assignedTo ? assigneeMap.get(task.assignedTo) : null,
+            claimedBy: task.claimedBy || null,
+            claimedAt: task.claimedAt || null,
             dueDate: task.dueDate,
             createdBy: task.createdBy,
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
             completedAt: task.completedAt,
+            remarks: task.remarks || [],  // ✅ Always return remarks array
         }));
 
         return NextResponse.json({ tasks: tasksWithAssignees });
@@ -133,11 +136,14 @@ export async function POST(
             priority: priority || "medium",
             assignedTo: null,
             assignedBy: null,
+            claimedBy: null,
+            claimedAt: null,
             dueDate: dueDate ? new Date(dueDate) : null,
             createdBy: firebaseUid,
             createdAt: now,
             updatedAt: now,
             completedAt: null,
+            remarks: [],  // ✅ Initialize empty remarks array
         };
 
         const result = await tasksCollection.insertOne(newTask);

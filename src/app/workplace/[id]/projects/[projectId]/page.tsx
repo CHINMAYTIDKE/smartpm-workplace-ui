@@ -407,8 +407,8 @@ export default function ProjectDetailPage() {
                     )}
 
                     <div className="flex flex-col gap-1">
-                        {/* Remarks Button - Always show for assigned or claimed tasks */}
-                        {(isClaimedByMe || task.assignedTo === user?.uid || isAdmin) && (
+                        {/* Remarks Button - Show for task owner or admin */}
+                        {(isClaimedByMe || task.assignedTo === user?.uid) && (
                             <Button
                                 size="sm"
                                 variant={task.remarks?.length > 0 ? "default" : "outline"}
