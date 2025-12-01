@@ -28,20 +28,24 @@ if (process.env.NODE_ENV === "development") {
 
 export default clientPromise;
 
-// Helper to get database
-export async function getDatabase() {
-    const client = await clientPromise;
-    return client.db("smartpm"); // Database name
-}
-
 // Helper to get users collection
 export async function getUsersCollection() {
-    const db = await getDatabase();
+    const db = await clientPromise.then(client => client.db("smartpm"));
     return db.collection("users");
 }
 
 // Helper to get workspaces collection
 export async function getWorkspacesCollection() {
-    const db = await getDatabase();
+    const db = await clientPromise.then(client => client.db("smartpm"));
     return db.collection("workspaces");
+}
+
+export async function getProjectsCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("projects");
+}
+
+export async function getTasksCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("tasks");
 }
