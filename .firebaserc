@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "aitmp-final-12345",
+    "production": "ai-tmp-986a4"
+  },
+  "targets": {},
+  "etags": {}
+}

@@ -1,41 +1,112 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, UserPlus, MoreVertical, Mail } from "lucide-react"
+import { Search, UserPlus, MoreVertical, Loader2, Users } from "lucide-react"
+import { useParams } from "next/navigation"
+import { fetchWithAuth } from "@/lib/utils/api"
+import { toast } from "sonner"
 
-const members = [
-  { id: 1, name: "John Doe", email: "john@example.com", role: "owner", avatar: "JD", status: "online", joinedDate: "Jan 2023" },
-  { id: 2, name: "Sarah Smith", email: "sarah@example.com", role: "admin", avatar: "SS", status: "online", joinedDate: "Feb 2023" },
-  { id: 3, name: "Mike Johnson", email: "mike@example.com", role: "member", avatar: "MJ", status: "away", joinedDate: "Mar 2023" },
-  { id: 4, name: "Emily Brown", email: "emily@example.com", role: "member", avatar: "EB", status: "offline", joinedDate: "Apr 2023" },
-  { id: 5, name: "David Lee", email: "david@example.com", role: "member", avatar: "DL", status: "online", joinedDate: "May 2023" },
-  { id: 6, name: "Lisa Wang", email: "lisa@example.com", role: "admin", avatar: "LW", status: "online", joinedDate: "Jun 2023" },
-]
+interface WorkspaceMember {
+  id: string
+  name: string
+  email: string
+  photoURL: string | null
+  role: "owner" | "admin" | "member"
+  joinedAt: Date
+  status: string
+}
 
 export default function MembersPage() {
+  const params = useParams()
+  const workspaceId = params.id as string
+
+  const [members, setMembers] = useState<WorkspaceMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState("")
-  const [inviteRole, setInviteRole] = useState("member")
+
+  useEffect(() => {
+    if (workspaceId) {
+      fetchMembers()
+    }
+  }, [workspaceId])
+
+  const fetchMembers = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      const response = await fetchWithAuth(`/api/workspaces/${workspaceId}/members`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch members")
+      }
+
+      setMembers(data.members || [])
+    } catch (err: any) {
+      console.error("Error fetching members:", err)
+      setError(err.message || "Failed to load members")
+      toast.error(err.message || "Failed to load members")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredMembers = members.filter(member =>
     member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const handleInviteMember = () => {
-    console.log("Inviting:", inviteEmail, inviteRole)
-    setInviteDialogOpen(false)
-    setInviteEmail("")
-    setInviteRole("member")
+  const getRelativeJoinDate = (joinedAt: Date) => {
+    const date = new Date(joinedAt)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - date.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 7) return `${diffDays} days ago`
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }
+
+  // Calculate stats from actual members
+  const totalMembers = members.length
+  const onlineMembers = 0 // We don't track online status yet
+  const adminMembers = members.filter(m => m.role === "admin" || m.role === "owner").length
+  const recentJoins = members.filter(m => {
+    const joinDate = new Date(m.joinedAt)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return joinDate > thirtyDaysAgo
+  }).length
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card className="border-destructive">
+          <CardContent className="pt-6 text-center">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={fetchMembers} variant="outline">
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -45,57 +116,11 @@ export default function MembersPage() {
           <h1 className="text-3xl font-bold mb-2">Team Members</h1>
           <p className="text-muted-foreground">Manage your workplace team and permissions</p>
         </div>
-        
-        <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <UserPlus className="w-4 h-4" />
-              Invite Member
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invite Team Member</DialogTitle>
-              <DialogDescription>
-                Send an invitation to join your workplace
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="colleague@example.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger id="role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="owner">Owner</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleInviteMember}>
-                <Mail className="w-4 h-4 mr-2" />
-                Send Invitation
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+
+        <Button className="gap-2" disabled>
+          <UserPlus className="w-4 h-4" />
+          Invite Member
+        </Button>
       </div>
 
       {/* Stats */}
@@ -105,7 +130,7 @@ export default function MembersPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Members</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{members.length}</div>
+            <div className="text-2xl font-bold">{totalMembers}</div>
           </CardContent>
         </Card>
         <Card>
@@ -113,7 +138,8 @@ export default function MembersPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Online Now</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{members.filter(m => m.status === "online").length}</div>
+            <div className="text-2xl font-bold">{onlineMembers}</div>
+            <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
           </CardContent>
         </Card>
         <Card>
@@ -121,7 +147,7 @@ export default function MembersPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Admins</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{members.filter(m => m.role === "admin" || m.role === "owner").length}</div>
+            <div className="text-2xl font-bold">{adminMembers}</div>
           </CardContent>
         </Card>
         <Card>
@@ -129,7 +155,7 @@ export default function MembersPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Joined This Month</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
+            <div className="text-2xl font-bold">{recentJoins}</div>
           </CardContent>
         </Card>
       </div>
@@ -148,42 +174,54 @@ export default function MembersPage() {
       {/* Members List */}
       <Card>
         <CardContent className="p-0">
-          <div className="divide-y">
-            {filteredMembers.map((member) => (
-              <div key={member.id} className="p-4 hover:bg-accent/50 transition-colors flex items-center gap-4">
-                <div className="relative">
-                  <Avatar className="w-12 h-12">
-                    <AvatarFallback>{member.avatar}</AvatarFallback>
-                  </Avatar>
-                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${
-                    member.status === "online" ? "bg-green-500" :
-                    member.status === "away" ? "bg-yellow-500" : "bg-gray-400"
-                  }`} />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">{member.name}</p>
-                    <Badge variant={
-                      member.role === "owner" ? "default" :
-                      member.role === "admin" ? "secondary" : "outline"
-                    } className="text-xs">
-                      {member.role}
-                    </Badge>
+          {filteredMembers.length > 0 ? (
+            <div className="divide-y">
+              {filteredMembers.map((member) => (
+                <div key={member.id} className="p-4 hover:bg-accent/50 transition-colors flex items-center gap-4">
+                  <div className="relative">
+                    <Avatar className="w-12 h-12">
+                      <AvatarImage src={member.photoURL || undefined} alt={member.name} />
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                        {member.name.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background bg-gray-400`} />
                   </div>
-                  <p className="text-sm text-muted-foreground">{member.email}</p>
-                </div>
 
-                <div className="text-sm text-muted-foreground">
-                  Joined {member.joinedDate}
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{member.name}</p>
+                      <Badge variant={
+                        member.role === "owner" ? "default" :
+                          member.role === "admin" ? "secondary" : "outline"
+                      } className="text-xs capitalize">
+                        {member.role}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{member.email}</p>
+                  </div>
 
-                <Button variant="ghost" size="icon">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
+                  <div className="text-sm text-muted-foreground">
+                    Joined {getRelativeJoinDate(member.joinedAt)}
+                  </div>
+
+                  <Button variant="ghost" size="icon" disabled>
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>
+                {searchQuery
+                  ? "No members found matching your search"
+                  : "No members in this workspace yet"
+                }
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
