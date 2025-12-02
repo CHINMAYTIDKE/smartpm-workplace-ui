@@ -65,7 +65,10 @@ export async function GET(
         // Calculate statistics for each member
         const memberStats = workspace.members.map((member: any) => {
             const user = userMap.get(member.userId);
-            const memberTasks = allTasks.filter((t: any) => t.assignedTo === member.userId);
+            // Include tasks that are either assigned to OR claimed by the member
+            const memberTasks = allTasks.filter((t: any) =>
+                t.assignedTo === member.userId || t.claimedBy === member.userId
+            );
             const completedTasks = memberTasks.filter((t: any) => t.status === "completed");
             const inProgressTasks = memberTasks.filter((t: any) => t.status === "in-progress");
             const todoTasks = memberTasks.filter((t: any) => t.status === "todo");

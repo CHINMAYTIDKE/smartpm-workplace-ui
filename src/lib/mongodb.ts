@@ -49,3 +49,14 @@ export async function getTasksCollection() {
     const db = await clientPromise.then(client => client.db("smartpm"));
     return db.collection("tasks");
 }
+
+export async function getFilesCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("files");
+}
+
+export async function getFoldersCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("folders");
+}
+
