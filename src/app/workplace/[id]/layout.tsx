@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -9,7 +10,6 @@ import { Separator } from "@/components/ui/separator"
 import {
   LayoutDashboard,
   FolderKanban,
-  Kanban,
   Calendar,
   MessageSquare,
   FileText,
@@ -19,19 +19,27 @@ import {
   ChevronLeft,
   Settings,
   Users,
-  Bell
+  Bell,
+  Loader2
 } from "lucide-react"
+import { fetchWithAuth } from "@/lib/utils/api"
 
 const navigation = [
   { name: "Dashboard", href: "", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderKanban },
-  { name: "Boards", href: "/boards", icon: Kanban },
   { name: "Meetings", href: "/meetings", icon: Calendar },
   { name: "Chat", href: "/chat", icon: MessageSquare },
   { name: "Files", href: "/files", icon: FileText },
   { name: "AI Assistant", href: "/ai-assistant", icon: Sparkles },
   { name: "Workflow Manager", href: "/workflow", icon: Workflow },
 ]
+
+interface Workspace {
+  id: string
+  name: string
+  description: string
+  members: any[]
+}
 
 export default function WorkplaceLayout({
   children,
@@ -43,11 +51,27 @@ export default function WorkplaceLayout({
   const router = useRouter()
   const workplaceId = params.id as string
 
-  // Mock workplace data
-  const workplace = {
-    id: workplaceId,
-    name: workplaceId === "1" ? "Acme Corporation" : workplaceId === "2" ? "Marketing Team" : "Design Studio",
-    members: 45
+  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchWorkspace()
+  }, [workplaceId])
+
+  const fetchWorkspace = async () => {
+    try {
+      setLoading(true)
+      const response = await fetchWithAuth(`/api/workspaces/${workplaceId}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setWorkspace(data.workspace)
+      }
+    } catch (error) {
+      console.error("Error fetching workspace:", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const isActive = (href: string) => {
@@ -79,8 +103,22 @@ export default function WorkplaceLayout({
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-sm truncate">{workplace.name}</h2>
-              <p className="text-xs text-muted-foreground">{workplace.members} members</p>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : workspace ? (
+                <>
+                  <h2 className="font-semibold text-sm truncate">{workspace.name}</h2>
+                  <p className="text-xs text-muted-foreground">{workspace.members?.length || 0} members</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-semibold text-sm truncate">Workspace</h2>
+                  <p className="text-xs text-muted-foreground">-</p>
+                </>
+              )}
             </div>
           </div>
         </div>

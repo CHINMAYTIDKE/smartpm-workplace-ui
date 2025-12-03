@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTasksCollection, getWorkspacesCollection, getUsersCollection } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 
-// PATCH - Assign task to member
+// PATCH - Assign task to member with workflow integration
 export async function PATCH(
     request: NextRequest,
     { params }: { params: { id: string } }
@@ -81,6 +81,37 @@ export async function PATCH(
                 },
             }
         );
+
+        // 🔔 AUTO-TRIGGER WORKFLOW NOTIFICATIONS FOR TASK ASSIGNMENT
+        if (assignedTo) {
+            try {
+                const { getWorkflows } = await import('@/lib/firebase/workflows');
+                const { executeWorkflowAction } = await import('@/lib/workflow-executor');
+
+                console.log(`[WORKFLOW] Task assigned: ${params.id}, checking for workflows...`);
+
+                // Get all active workflows for this workspace
+                const workflows = await getWorkflows(task.workspaceId.toString());
+                const activeWorkflows = workflows.filter(w => w.isActive);
+
+                // Trigger workflows with send-email action
+                for (const workflow of activeWorkflows) {
+                    if (workflow.action.type === 'send-email') {
+                        console.log(`[WORKFLOW] ✅ Executing workflow: "${workflow.name}" for task assignment`);
+
+                        await executeWorkflowAction(workflow, {
+                            workspaceId: task.workspaceId.toString(),
+                            taskId: params.id,
+                            triggeredBy: firebaseUid
+                        });
+
+                        console.log(`[WORKFLOW] ✅ Assignment notification sent via workflow: "${workflow.name}"`);
+                    }
+                }
+            } catch (workflowError) {
+                console.error('[WORKFLOW] ❌ Error executing workflows (task still assigned):', workflowError);
+            }
+        }
 
         // Get assignee details if assigned
         let assignee = null;

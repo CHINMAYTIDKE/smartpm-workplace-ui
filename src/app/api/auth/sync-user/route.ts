@@ -20,11 +20,12 @@ export async function POST(request: NextRequest) {
         const existingUser = await usersCollection.findOne({ firebaseUid });
 
         if (existingUser) {
-            // Update existing user
+            // Update existing user (including email)
             await usersCollection.updateOne(
                 { firebaseUid },
                 {
                     $set: {
+                        email, // Always update email in case it changed
                         displayName,
                         photoURL,
                         lastLoginAt: now,
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
             return NextResponse.json({
                 success: true,
-                user: { ...existingUser, lastLoginAt: now },
+                user: { ...existingUser, email, lastLoginAt: now },
             });
         } else {
             // Create new user
