@@ -10,7 +10,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Kanban,
-  ListTodo,
+  Calendar,
   MessageSquare,
   FileText,
   Sparkles,
@@ -26,7 +26,7 @@ const navigation = [
   { name: "Dashboard", href: "", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderKanban },
   { name: "Boards", href: "/boards", icon: Kanban },
-  { name: "Backlog", href: "/backlog", icon: ListTodo },
+  { name: "Meetings", href: "/meetings", icon: Calendar },
   { name: "Chat", href: "/chat", icon: MessageSquare },
   { name: "Files", href: "/files", icon: FileText },
   { name: "AI Assistant", href: "/ai-assistant", icon: Sparkles },
@@ -73,7 +73,7 @@ export default function WorkplaceLayout({
             <ChevronLeft className="w-4 h-4" />
             Back to Workspaces
           </Button>
-          
+
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-white" />
@@ -91,7 +91,7 @@ export default function WorkplaceLayout({
             {navigation.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
-              
+
               return (
                 <Button
                   key={item.name}
@@ -142,7 +142,7 @@ export default function WorkplaceLayout({
             </div>
             <span className="font-semibold text-lg">smartPM</span>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon">
               <Bell className="w-5 h-5" />
