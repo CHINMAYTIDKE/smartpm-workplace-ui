@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         const success = await sendTaskReminderEmail({
             to: email,
             assigneeName: 'Test User',
-            taskTitle: '🧪 Test Email from SmartPM Workflow',
+            taskTitle: '🧪 Test Email from FlowTrack Workflow',
             taskDescription: 'This is a test email to verify that Gmail integration is working correctly!',
             dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
             workspaceName: 'Test Workspace',

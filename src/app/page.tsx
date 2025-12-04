@@ -31,7 +31,7 @@ export default function Home() {
             <span className="text-2xl font-bold text-white">S</span>
           </div>
           <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            smartPM
+            FlowTrack
           </h1>
         </div>
         <p className="text-xl text-muted-foreground max-w-md">

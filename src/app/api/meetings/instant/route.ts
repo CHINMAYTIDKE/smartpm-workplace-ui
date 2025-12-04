@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
         const newMeeting = {
             workspaceId,
             title: title || `Quick Meeting - ${now.toLocaleString()}`,
-            description: 'Instant meeting created from smartPM',
+            description: 'Instant meeting created from FlowTrack',
             startTime: now.toISOString(),
             endTime: endTime.toISOString(),
             attendees: [],

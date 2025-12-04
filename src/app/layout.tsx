@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "smartPM - Intelligent Project Management",
+  title: "FlowTrack - Intelligent Project Management",
   description: "Your intelligent project management platform",
 };
 

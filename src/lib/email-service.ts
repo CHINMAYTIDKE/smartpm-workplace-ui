@@ -69,7 +69,7 @@ export async function sendTaskReminderEmail(data: TaskReminderEmailData): Promis
             </p>
             
             <p style="font-size: 14px; color: #999; margin-top: 30px;">
-              This is an automated reminder from SmartPM Workplace. You're receiving this because you're assigned to this task.
+              This is an automated reminder from FlowTrack Workplace. You're receiving this because you're assigned to this task.
             </p>
           </div>
         </body>
@@ -88,11 +88,11 @@ Workspace: ${data.workspaceName}
 
 ${data.taskUrl ? `View task: ${data.taskUrl}` : ''}
 
-This is an automated reminder from SmartPM Workplace.
+This is an automated reminder from FlowTrack Workplace.
     `.trim();
 
     await transporter.sendMail({
-      from: `"SmartPM Workplace" <${process.env.GMAIL_USER}>`,
+      from: `"FlowTrack Workplace" <${process.env.GMAIL_USER}>`,
       to: data.to,
       subject: `⏰ Reminder: "${data.taskTitle}" is due in 1 week`,
       html: emailHtml,

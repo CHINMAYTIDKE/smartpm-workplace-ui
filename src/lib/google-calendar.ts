@@ -184,7 +184,7 @@ export class GoogleCalendarService {
 
         return this.createEvent({
             summary: title,
-            description: 'Instant meeting created from smartPM',
+            description: 'Instant meeting created from FlowTrack',
             start: {
                 dateTime: now.toISOString(),
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone

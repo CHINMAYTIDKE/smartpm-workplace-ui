@@ -175,13 +175,7 @@ Use markdown formatting.`;
                 break;
 
             case "create_tasks":
-                prompt = `Based on the current projects and existing tasks, suggest 5-7 new tasks that would be valuable to add. Consider:
-- Incomplete work
-- Project requirements
-- Team capacity
-
-Format as a numbered list with task title and brief description.`;
-                break;
+                return await createAutomatedTasks(workspaceId, context);
 
             case "analyze_metrics":
                 const completionRate = context.tasks.length > 0
@@ -220,6 +214,89 @@ Provide insights on:
     } catch (error) {
         console.error("Error executing AI action:", error);
         throw new Error("Failed to execute AI action");
+    }
+}
+
+/**
+ * Automatically create new tasks based on project context
+ */
+async function createAutomatedTasks(workspaceId: string, context: WorkspaceContext): Promise<string> {
+    try {
+        const tasksCollection = await getTasksCollection();
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `Based on the current projects and existing tasks, suggest 5 new tasks that would be valuable to add.
+        
+Context:
+- Projects: ${context.projects.map(p => p.name).join(', ')}
+- Existing Tasks: ${context.tasks.map(t => t.title).join(', ')}
+
+Return ONLY a raw JSON array of objects (no markdown formatting, no code blocks) with the following structure:
+[
+  {
+    "title": "Task Title",
+    "description": "Brief description",
+    "priority": "medium" (low, medium, or high),
+    "projectId": "ID of the most relevant project from the list provided above, or null if general"
+  }
+]`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = await result.response.text();
+
+        // Clean up response if it contains markdown code blocks
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        let newTasks: any[] = [];
+        try {
+            newTasks = JSON.parse(cleanJson);
+        } catch (e) {
+            console.error("Failed to parse AI task suggestions:", responseText);
+            return "Failed to generate tasks. Please try again.";
+        }
+
+        if (!Array.isArray(newTasks) || newTasks.length === 0) {
+            return "No new tasks were suggested.";
+        }
+
+        const createdTasks: string[] = [];
+
+        // Insert tasks into database
+        for (const task of newTasks) {
+            // Find matching project ID if name was returned, or use the ID if provided
+            // The prompt asks for ID, but let's be safe. 
+            // Actually, the prompt asks for projectId. Let's verify it exists or pick the first active project.
+
+            let projectId = task.projectId;
+            if (!projectId || !context.projects.find(p => p.id === projectId)) {
+                // Fallback to first active project or null (if schema allows, but usually tasks need projects)
+                // Let's assign to the first project found in context
+                projectId = context.projects.length > 0 ? context.projects[0].id : null;
+            }
+
+            if (!projectId) continue; // Skip if no project to assign to
+
+            await tasksCollection.insertOne({
+                workspaceId: new ObjectId(workspaceId),
+                title: task.title,
+                description: task.description,
+                status: "todo",
+                priority: task.priority || "medium",
+                projectId: new ObjectId(projectId),
+                assignedTo: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                createdBy: "ai"
+            });
+
+            createdTasks.push(`- **${task.title}**`);
+        }
+
+        return `✅ **Created ${createdTasks.length} new tasks:**\n\n${createdTasks.join('\n')}`;
+
+    } catch (error) {
+        console.error("Error creating automated tasks:", error);
+        throw new Error("Failed to create automated tasks");
     }
 }
 

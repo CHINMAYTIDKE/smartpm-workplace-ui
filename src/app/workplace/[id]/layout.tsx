@@ -178,7 +178,7 @@ export default function WorkplaceLayout({
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
               <span className="text-sm font-bold text-white">S</span>
             </div>
-            <span className="font-semibold text-lg">smartPM</span>
+            <span className="font-semibold text-lg">FlowTrack</span>
           </div>
 
           <div className="flex items-center gap-3">
