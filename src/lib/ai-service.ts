@@ -90,8 +90,8 @@ export async function generateChatResponse(
     try {
         const context = await gatherWorkspaceContext(workspaceId);
 
-        // Use gemini-1.5-flash as it is the free tier model
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // Use gemini-2.5-flash as it is the free tier model
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Build context-aware prompt
         const systemPrompt = `You are an intelligent project management assistant for a workspace with the following context:
@@ -154,7 +154,7 @@ export async function executeAIAction(
 ): Promise<string> {
     try {
         const context = await gatherWorkspaceContext(workspaceId);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         let prompt = "";
 

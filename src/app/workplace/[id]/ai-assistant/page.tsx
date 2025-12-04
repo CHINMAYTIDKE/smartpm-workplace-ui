@@ -46,23 +46,43 @@ export default function AIAssistantPage() {
 
   // Load conversation history and auth
   useEffect(() => {
+    // Fetch conversation history from API
+    const fetchHistory = async (uid: string) => {
+      try {
+        const response = await fetch(`/api/ai/chat?workspaceId=${workspaceId}`, {
+          headers: {
+            "x-firebase-uid": uid
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          } else {
+            // Show welcome message only if no history
+            setMessages([{
+              id: 1,
+              message: "👋 Hello! I'm your AI assistant. I can help you with:\n\n• Analyzing project status\n• Creating and assigning tasks\n• Reviewing team metrics\n• Planning sprints\n\nHow can I help you today?",
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isUser: false
+            }]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch chat history:", error);
+      }
+    };
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserUid(user.uid)
+        fetchHistory(user.uid);
       } else {
         setUserUid(null)
         setError("Please sign in to use the AI assistant")
       }
     })
-
-    // TODO: Fetch conversation history from API
-    // For now, show welcome message
-    setMessages([{
-      id: 1,
-      message: "👋 Hello! I'm your AI assistant. I can help you with:\n\n• Analyzing project status\n• Creating and assigning tasks\n• Reviewing team metrics\n• Planning sprints\n\nHow can I help you today?",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isUser: false
-    }])
 
     return () => unsubscribe()
   }, [workspaceId])
@@ -85,8 +105,16 @@ export default function AIAssistantPage() {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isUser: true
       }
-      setMessages(prev => [...prev, newUserMessage])
 
+      // Optimistically add AI placeholder
+      const newAiMessage: Message = {
+        id: messages.length + 2,
+        message: "", // Start empty
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isUser: false
+      }
+
+      setMessages(prev => [...prev, newUserMessage, newAiMessage])
       setIsLoading(true)
 
       try {
@@ -107,18 +135,36 @@ export default function AIAssistantPage() {
           throw new Error("Failed to get AI response")
         }
 
-        const data = await response.json()
+        if (!response.body) {
+          throw new Error("No response body")
+        }
 
-        // Add AI response
-        setMessages(prev => [...prev, {
-          id: prev.length + 1,
-          message: data.response,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isUser: false
-        }])
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const text = decoder.decode(value, { stream: true })
+
+          setMessages(prev => {
+            const newMessages = [...prev]
+            // Update the last message (which is the AI message we added)
+            const lastMsgIndex = newMessages.length - 1
+            newMessages[lastMsgIndex] = {
+              ...newMessages[lastMsgIndex],
+              message: newMessages[lastMsgIndex].message + text
+            }
+            return newMessages
+          })
+        }
+
       } catch (err) {
-        setError("AI assistant is not configured yet. Please set up your AI API key in environment variables.")
+        setError("AI assistant is not configured yet or failed to respond.")
         console.error("AI chat error:", err)
+        // Remove the empty AI message on error if it's still empty? 
+        // Or just leave it. Let's leave it for now or maybe add error text to it.
       } finally {
         setIsLoading(false)
       }
@@ -261,8 +307,8 @@ export default function AIAssistantPage() {
                         <span className="text-xs text-muted-foreground">{msg.time}</span>
                       </div>
                       <div className={`rounded-lg px-4 py-2 ${msg.isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
                         }`}>
                         <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
                       </div>
@@ -306,7 +352,12 @@ export default function AIAssistantPage() {
                   placeholder="Ask me anything about your projects..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSendMessage()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isLoading) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   disabled={isLoading}
                   className="flex-1"
                 />

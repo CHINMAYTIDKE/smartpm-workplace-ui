@@ -50,56 +50,54 @@ export async function POST(request: NextRequest) {
             message: "AI task started"
         };
 
-        // Execute AI action asynchronously
-        executeAIActionAsync(workspaceId, actionType, taskId, firebaseUid).catch(console.error);
+        // Execute AI action synchronously to return response to chat
+        let responseText = "";
+        try {
+            responseText = await executeAIAction(workspaceId, actionType);
 
-        return NextResponse.json(responsePromise);
+            // Update task as completed
+            await updateAITask({
+                id: taskId,
+                status: "completed",
+                progress: 100,
+                result: responseText,
+            });
+
+            // Log the action in MongoDB
+            const actionsCollection = await getAIActionsCollection();
+            await actionsCollection.insertOne({
+                workspaceId,
+                userId: firebaseUid,
+                actionType,
+                response: responseText,
+                createdAt: new Date(),
+                status: "completed"
+            });
+
+        } catch (error) {
+            console.error("Error executing AI action:", error);
+
+            // Update task as failed
+            await updateAITask({
+                id: taskId,
+                status: "failed",
+                error: error instanceof Error ? error.message : "Unknown error",
+            });
+
+            throw error; // Re-throw to be caught by outer try/catch
+        }
+
+        return NextResponse.json({
+            success: true,
+            taskId,
+            response: responseText
+        });
+
     } catch (error) {
         console.error("Error in AI action:", error);
         return NextResponse.json(
             { error: "Failed to execute AI action" },
             { status: 500 }
         );
-    }
-}
-
-// Async function to execute AI action and update task status
-async function executeAIActionAsync(
-    workspaceId: string,
-    actionType: string,
-    taskId: string,
-    userId: string
-) {
-    try {
-        // Execute AI action
-        const response = await executeAIAction(workspaceId, actionType);
-
-        // Update task as completed
-        await updateAITask({
-            id: taskId,
-            status: "completed",
-            progress: 100,
-            result: response,
-        });
-
-        // Log the action in MongoDB
-        const actionsCollection = await getAIActionsCollection();
-        await actionsCollection.insertOne({
-            workspaceId,
-            userId,
-            actionType,
-            response,
-            createdAt: new Date(),
-            status: "completed"
-        });
-    } catch (error) {
-        console.error("Error executing AI action:", error);
-
-        // Update task as failed
-        await updateAITask({
-            id: taskId,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Unknown error",
-        });
     }
 }
