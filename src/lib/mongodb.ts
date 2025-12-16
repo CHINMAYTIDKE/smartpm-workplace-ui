@@ -49,3 +49,28 @@ export async function getTasksCollection() {
     const db = await clientPromise.then(client => client.db("smartpm"));
     return db.collection("tasks");
 }
+
+export async function getFilesCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("files");
+}
+
+export async function getFoldersCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("folders");
+}
+
+export async function getAIConversationsCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("ai_conversations");
+}
+
+export async function getAIActionsCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("ai_actions");
+}
+
+export async function getMeetingsCollection() {
+    const db = await clientPromise.then(client => client.db("smartpm"));
+    return db.collection("meetings");
+}

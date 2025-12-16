@@ -33,12 +33,34 @@ interface WorkspaceMember {
   status: string
 }
 
+interface Project {
+  id: string
+  name: string
+  description: string
+  priority: string
+  status: string
+  dueDate: string | null
+  tasks: {
+    total: number
+    completed: number
+  }
+  progress: number
+  members: number
+  createdAt: string
+}
+
 interface WorkspaceData {
   id: string
   name: string
   description: string
   memberCount: number
   projectCount: number
+}
+
+interface AnalyticsData {
+  totalTasks: number
+  completedTasks: number
+  inProgressTasks: number
 }
 
 export default function WorkplaceDashboard() {
@@ -48,6 +70,8 @@ export default function WorkplaceDashboard() {
 
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null)
   const [members, setMembers] = useState<WorkspaceMember[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [analytics, setAnalytics] = useState<AnalyticsData>({ totalTasks: 0, completedTasks: 0, inProgressTasks: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -76,6 +100,26 @@ export default function WorkplaceDashboard() {
 
       if (!membersRes.ok) {
         throw new Error(membersData.error || "Failed to fetch members")
+      }
+
+      // Fetch analytics data
+      const analyticsRes = await fetchWithAuth(`/api/workspaces/${workspaceId}/analytics`)
+      const analyticsData = await analyticsRes.json()
+
+      if (analyticsRes.ok) {
+        setAnalytics({
+          totalTasks: analyticsData.totalTasks || 0,
+          completedTasks: analyticsData.completedTasks || 0,
+          inProgressTasks: analyticsData.inProgressTasks || 0,
+        })
+      }
+
+      // Fetch projects data
+      const projectsRes = await fetchWithAuth(`/api/workspaces/${workspaceId}/projects`)
+      const projectsData = await projectsRes.json()
+
+      if (projectsRes.ok) {
+        setProjects(projectsData.projects || [])
       }
 
       setWorkspace({
@@ -120,6 +164,7 @@ export default function WorkplaceDashboard() {
   }
 
   // Calculate stats from real data
+  const pendingTasks = analytics.totalTasks - analytics.completedTasks
   const stats = [
     {
       label: "Active Projects",
@@ -130,9 +175,9 @@ export default function WorkplaceDashboard() {
     },
     {
       label: "Tasks Completed",
-      value: "0",
+      value: analytics.completedTasks.toString(),
       icon: CheckCircle2,
-      trend: "Coming soon",
+      trend: analytics.totalTasks > 0 ? `${Math.round((analytics.completedTasks / analytics.totalTasks) * 100)}% completion rate` : "No tasks yet",
       color: "text-green-600"
     },
     {
@@ -144,9 +189,9 @@ export default function WorkplaceDashboard() {
     },
     {
       label: "Pending Tasks",
-      value: "0",
+      value: pendingTasks.toString(),
       icon: Clock,
-      trend: "Coming soon",
+      trend: analytics.inProgressTasks > 0 ? `${analytics.inProgressTasks} in progress` : "No pending tasks",
       color: "text-orange-600"
     },
   ]
@@ -184,7 +229,7 @@ export default function WorkplaceDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Projects Placeholder */}
+        {/* Active Projects */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -203,10 +248,62 @@ export default function WorkplaceDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-12 text-muted-foreground">
-              <FolderKanban className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No projects yet. Create your first project to get started!</p>
-            </div>
+            {projects.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FolderKanban className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No projects yet. Create your first project to get started!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {projects.slice(0, 3).map((project) => (
+                  <div
+                    key={project.id}
+                    className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                    onClick={() => router.push(`/workplace/${workspaceId}/projects/${project.id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold mb-1">{project.name}</h3>
+                        {project.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-1">
+                            {project.description}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Badge
+                          variant={project.priority === "high" ? "destructive" : project.priority === "medium" ? "default" : "secondary"}
+                          className="text-xs"
+                        >
+                          {project.priority}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {project.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {project.tasks.completed} of {project.tasks.total} tasks completed
+                        </span>
+                        <span className="font-medium">{project.progress}%</span>
+                      </div>
+                      <Progress value={project.progress} className="h-2" />
+                    </div>
+                  </div>
+                ))}
+                {projects.length > 3 && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => router.push(`/workplace/${workspaceId}/projects`)}
+                  >
+                    View All Projects ({projects.length})
+                  </Button>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

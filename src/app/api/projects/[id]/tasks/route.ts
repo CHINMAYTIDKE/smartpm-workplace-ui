@@ -73,7 +73,7 @@ export async function GET(
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
             completedAt: task.completedAt,
-            remarks: task.remarks || [],  // ✅ Always return remarks array
+            remarks: task.remarks || [],
         }));
 
         return NextResponse.json({ tasks: tasksWithAssignees });
@@ -86,7 +86,7 @@ export async function GET(
     }
 }
 
-// POST - Create new task
+// POST - Create new task with workflow integration
 export async function POST(
     request: NextRequest,
     { params }: { params: { id: string } }
@@ -143,15 +143,49 @@ export async function POST(
             createdAt: now,
             updatedAt: now,
             completedAt: null,
-            remarks: [],  // ✅ Initialize empty remarks array
+            remarks: [],
         };
 
         const result = await tasksCollection.insertOne(newTask);
+        const taskId = result.insertedId.toString();
+
+        // 🔔 AUTO-TRIGGER WORKFLOW NOTIFICATIONS
+        try {
+            const { getWorkflows } = await import('@/lib/firebase/workflows');
+            const { executeWorkflowAction, shouldTriggerWorkflow } = await import('@/lib/workflow-executor');
+
+            console.log(`[WORKFLOW] Task created: ${taskId}, checking for workflows...`);
+
+            // Get all active workflows for this workspace
+            const workflows = await getWorkflows(project.workspaceId.toString());
+            const activeWorkflows = workflows.filter(w => w.isActive);
+
+            console.log(`[WORKFLOW] Found ${activeWorkflows.length} active workflows`);
+
+            // Trigger workflows for task-created event
+            for (const workflow of activeWorkflows) {
+                if (workflow.trigger.type === 'task' || workflow.trigger.type === 'task-event') {
+                    console.log(`[WORKFLOW] ✅ Executing workflow: "${workflow.name}" for task creation`);
+
+                    await executeWorkflowAction(workflow, {
+                        workspaceId: project.workspaceId.toString(),
+                        taskId: taskId,
+                        projectId: params.id,
+                        triggeredBy: firebaseUid
+                    });
+
+                    console.log(`[WORKFLOW] ✅ Workflow "${workflow.name}" executed successfully`);
+                }
+            }
+        } catch (workflowError) {
+            // Don't fail task creation if workflow execution fails
+            console.error('[WORKFLOW] ❌ Error executing workflows (task still created):', workflowError);
+        }
 
         return NextResponse.json({
             success: true,
             task: {
-                id: result.insertedId.toString(),
+                id: taskId,
                 ...newTask,
                 assignee: null,
             },

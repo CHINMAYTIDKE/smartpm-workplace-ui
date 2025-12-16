@@ -201,7 +201,7 @@ export default function WorkspacesPage() {
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
                 <span className="text-xl font-bold text-white">S</span>
               </div>
-              <h1 className="text-3xl font-bold">smartPM</h1>
+              <h1 className="text-3xl font-bold">FlowTrack</h1>
             </div>
 
             {/* User Info & Sign Out */}

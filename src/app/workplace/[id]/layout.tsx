@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -9,8 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import {
   LayoutDashboard,
   FolderKanban,
-  Kanban,
-  ListTodo,
+  Calendar,
   MessageSquare,
   FileText,
   Sparkles,
@@ -19,19 +19,27 @@ import {
   ChevronLeft,
   Settings,
   Users,
-  Bell
+  Bell,
+  Loader2
 } from "lucide-react"
+import { fetchWithAuth } from "@/lib/utils/api"
 
 const navigation = [
   { name: "Dashboard", href: "", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderKanban },
-  { name: "Boards", href: "/boards", icon: Kanban },
-  { name: "Backlog", href: "/backlog", icon: ListTodo },
+  { name: "Meetings", href: "/meetings", icon: Calendar },
   { name: "Chat", href: "/chat", icon: MessageSquare },
   { name: "Files", href: "/files", icon: FileText },
   { name: "AI Assistant", href: "/ai-assistant", icon: Sparkles },
   { name: "Workflow Manager", href: "/workflow", icon: Workflow },
 ]
+
+interface Workspace {
+  id: string
+  name: string
+  description: string
+  members: any[]
+}
 
 export default function WorkplaceLayout({
   children,
@@ -43,11 +51,27 @@ export default function WorkplaceLayout({
   const router = useRouter()
   const workplaceId = params.id as string
 
-  // Mock workplace data
-  const workplace = {
-    id: workplaceId,
-    name: workplaceId === "1" ? "Acme Corporation" : workplaceId === "2" ? "Marketing Team" : "Design Studio",
-    members: 45
+  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchWorkspace()
+  }, [workplaceId])
+
+  const fetchWorkspace = async () => {
+    try {
+      setLoading(true)
+      const response = await fetchWithAuth(`/api/workspaces/${workplaceId}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setWorkspace(data.workspace)
+      }
+    } catch (error) {
+      console.error("Error fetching workspace:", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const isActive = (href: string) => {
@@ -73,14 +97,28 @@ export default function WorkplaceLayout({
             <ChevronLeft className="w-4 h-4" />
             Back to Workspaces
           </Button>
-          
+
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-sm truncate">{workplace.name}</h2>
-              <p className="text-xs text-muted-foreground">{workplace.members} members</p>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : workspace ? (
+                <>
+                  <h2 className="font-semibold text-sm truncate">{workspace.name}</h2>
+                  <p className="text-xs text-muted-foreground">{workspace.members?.length || 0} members</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-semibold text-sm truncate">Workspace</h2>
+                  <p className="text-xs text-muted-foreground">-</p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -91,7 +129,7 @@ export default function WorkplaceLayout({
             {navigation.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
-              
+
               return (
                 <Button
                   key={item.name}
@@ -140,9 +178,9 @@ export default function WorkplaceLayout({
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
               <span className="text-sm font-bold text-white">S</span>
             </div>
-            <span className="font-semibold text-lg">smartPM</span>
+            <span className="font-semibold text-lg">FlowTrack</span>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon">
               <Bell className="w-5 h-5" />

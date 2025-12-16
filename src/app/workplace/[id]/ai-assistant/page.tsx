@@ -1,61 +1,226 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sparkles, Send, FileText, ListChecks, BarChart3, Code, Lightbulb } from "lucide-react"
+import { Sparkles, Send, FileText, ListChecks, BarChart3, Code, Lightbulb, Loader2 } from "lucide-react"
+import { auth } from "@/lib/firebase.config"
+import { onAuthStateChanged } from "firebase/auth"
 
-const quickActions = [
-  { id: 1, icon: FileText, label: "Summarize project", description: "Get a summary of current project status" },
-  { id: 2, icon: ListChecks, label: "Create task list", description: "Generate tasks from requirements" },
-  { id: 3, icon: BarChart3, label: "Analyze metrics", description: "Review team performance metrics" },
-  { id: 4, icon: Code, label: "Code review", description: "Get AI-powered code suggestions" },
-]
+interface Message {
+  id: number
+  message: string
+  time: string
+  isUser: boolean
+}
 
-const conversations = [
-  { id: 1, message: "What are our top priorities this week?", time: "10:30 AM", isUser: true },
-  {
-    id: 2,
-    message: "Based on your current backlog and deadlines, here are your top priorities:\n\n1. **API Integration** - Due in 2 days, currently at 60% completion\n2. **Mobile App Bug Fixes** - 8 critical bugs need attention\n3. **User Authentication** - Blocked by security review\n\nWould you like me to help prioritize tasks or create a sprint plan?",
-    time: "10:30 AM",
-    isUser: false
-  },
-  { id: 3, message: "Create a sprint plan for next week", time: "10:32 AM", isUser: true },
-  {
-    id: 4,
-    message: "I've created a draft sprint plan for next week:\n\n**Sprint Goals:**\n- Complete API integration\n- Resolve all critical bugs\n- Begin user testing phase\n\n**Team Capacity:** 5 developers × 40 hours = 200 hours\n**Recommended Story Points:** 80-100\n\nI've assigned tasks based on team member expertise. Would you like me to adjust the distribution?",
-    time: "10:32 AM",
-    isUser: false
-  },
+interface QuickAction {
+  id: string
+  icon: any
+  label: string
+  description: string
+  actionType: string
+}
+
+const quickActions: QuickAction[] = [
+  { id: "1", icon: FileText, label: "Summarize project", description: "Get a summary of current project status", actionType: "summarize" },
+  { id: "2", icon: ListChecks, label: "Create task list", description: "Generate tasks from requirements", actionType: "create_tasks" },
+  { id: "3", icon: BarChart3, label: "Analyze metrics", description: "Review team performance metrics", actionType: "analyze_metrics" },
+  { id: "4", icon: Code, label: "Assign tasks", description: "Auto-assign tasks based on workload", actionType: "assign_tasks" },
 ]
 
 export default function AIAssistantPage() {
-  const [message, setMessage] = useState("")
-  const [messages, setMessages] = useState(conversations)
+  const params = useParams()
+  const workspaceId = params.id as string
 
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      setMessages([...messages, {
+  const [message, setMessage] = useState("")
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [userUid, setUserUid] = useState<string | null>(null)
+
+  // Load conversation history and auth
+  useEffect(() => {
+    // Fetch conversation history from API
+    const fetchHistory = async (uid: string) => {
+      try {
+        const response = await fetch(`/api/ai/chat?workspaceId=${workspaceId}`, {
+          headers: {
+            "x-firebase-uid": uid
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          } else {
+            // Show welcome message only if no history
+            setMessages([{
+              id: 1,
+              message: "👋 Hello! I'm your AI assistant. I can help you with:\n\n• Analyzing project status\n• Creating and assigning tasks\n• Reviewing team metrics\n• Planning sprints\n\nHow can I help you today?",
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isUser: false
+            }]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch chat history:", error);
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserUid(user.uid)
+        fetchHistory(user.uid);
+      } else {
+        setUserUid(null)
+        setError("Please sign in to use the AI assistant")
+      }
+    })
+
+    return () => unsubscribe()
+  }, [workspaceId])
+
+  const handleSendMessage = async () => {
+    if (message.trim() && !isLoading) {
+      if (!userUid) {
+        setError("Please sign in to use the AI assistant")
+        return
+      }
+
+      const userMessage = message.trim()
+      setMessage("")
+      setError(null)
+
+      // Add user message
+      const newUserMessage: Message = {
         id: messages.length + 1,
-        message: message,
+        message: userMessage,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isUser: true
+      }
+
+      // Optimistically add AI placeholder
+      const newAiMessage: Message = {
+        id: messages.length + 2,
+        message: "", // Start empty
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isUser: false
+      }
+
+      setMessages(prev => [...prev, newUserMessage, newAiMessage])
+      setIsLoading(true)
+
+      try {
+        const response = await fetch(`/api/ai/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-firebase-uid": userUid
+          },
+          body: JSON.stringify({
+            workspaceId,
+            message: userMessage,
+            conversationHistory: messages
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to get AI response")
+        }
+
+        if (!response.body) {
+          throw new Error("No response body")
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const text = decoder.decode(value, { stream: true })
+
+          setMessages(prev => {
+            const newMessages = [...prev]
+            // Update the last message (which is the AI message we added)
+            const lastMsgIndex = newMessages.length - 1
+            newMessages[lastMsgIndex] = {
+              ...newMessages[lastMsgIndex],
+              message: newMessages[lastMsgIndex].message + text
+            }
+            return newMessages
+          })
+        }
+
+      } catch (err) {
+        setError("AI assistant is not configured yet or failed to respond.")
+        console.error("AI chat error:", err)
+        // Remove the empty AI message on error if it's still empty? 
+        // Or just leave it. Let's leave it for now or maybe add error text to it.
+      } finally {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  const handleQuickAction = async (action: QuickAction) => {
+    if (!userUid) {
+      setError("Please sign in to use the AI assistant")
+      return
+    }
+
+    setError(null)
+
+    // Add user message for the action
+    const actionMessage: Message = {
+      id: messages.length + 1,
+      message: action.label,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isUser: true
+    }
+    setMessages(prev => [...prev, actionMessage])
+
+    setIsLoading(true)
+
+    try {
+      const response = await fetch(`/api/ai/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-firebase-uid": userUid
+        },
+        body: JSON.stringify({
+          workspaceId,
+          actionType: action.actionType
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to execute action")
+      }
+
+      const data = await response.json()
+
+      // Add AI response
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        message: data.response,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isUser: false
       }])
-      setMessage("")
-      
-      // Simulate AI response
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          id: prev.length + 1,
-          message: "I'm processing your request. This is a simulated AI response demonstrating the assistant's capabilities.",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isUser: false
-        }])
-      }, 1000)
+    } catch (err) {
+      setError("AI assistant is not configured yet. Please set up your AI API key in environment variables.")
+      console.error("AI action error:", err)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -87,7 +252,9 @@ export default function AIAssistantPage() {
                   return (
                     <button
                       key={action.id}
-                      className="w-full p-3 text-left rounded-lg hover:bg-accent transition-colors border"
+                      onClick={() => handleQuickAction(action)}
+                      disabled={isLoading}
+                      className="w-full p-3 text-left rounded-lg hover:bg-accent transition-colors border disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -112,7 +279,7 @@ export default function AIAssistantPage() {
                 <Badge variant="secondary" className="w-full justify-start">Task Management</Badge>
                 <Badge variant="secondary" className="w-full justify-start">Sprint Planning</Badge>
                 <Badge variant="secondary" className="w-full justify-start">Data Analysis</Badge>
-                <Badge variant="secondary" className="w-full justify-start">Code Review</Badge>
+                <Badge variant="secondary" className="w-full justify-start">Auto-Assignment</Badge>
                 <Badge variant="secondary" className="w-full justify-start">Documentation</Badge>
               </div>
             </CardContent>
@@ -139,16 +306,42 @@ export default function AIAssistantPage() {
                         </span>
                         <span className="text-xs text-muted-foreground">{msg.time}</span>
                       </div>
-                      <div className={`rounded-lg px-4 py-2 ${
-                        msg.isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      }`}>
+                      <div className={`rounded-lg px-4 py-2 ${msg.isUser
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
+                        }`}>
                         <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
                       </div>
                     </div>
                   </div>
                 ))}
+
+                {/* Loading indicator */}
+                {isLoading && (
+                  <div className="flex gap-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback>
+                        <Sparkles className="w-5 h-5" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 max-w-2xl">
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="font-semibold text-sm">AI Assistant</span>
+                        <span className="text-xs text-muted-foreground">typing...</span>
+                      </div>
+                      <div className="rounded-lg px-4 py-2 bg-muted">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error message */}
+                {error && (
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                    <p className="text-sm text-destructive">{error}</p>
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
@@ -159,11 +352,17 @@ export default function AIAssistantPage() {
                   placeholder="Ask me anything about your projects..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isLoading) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  disabled={isLoading}
                   className="flex-1"
                 />
-                <Button onClick={handleSendMessage} size="icon">
-                  <Send className="w-4 h-4" />
+                <Button onClick={handleSendMessage} disabled={isLoading} size="icon">
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </Button>
               </div>
             </div>

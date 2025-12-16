@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -19,46 +19,211 @@ import {
   Search,
   Grid3x3,
   List,
-  FolderPlus
+  FolderPlus,
+  Trash2
 } from "lucide-react"
+import { fetchWithAuth, fetchWithAuthFormData } from "@/lib/utils/api"
+import { toast } from "sonner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-const files = [
-  { id: 1, name: "Project Proposal.pdf", type: "pdf", size: "2.4 MB", modified: "2 hours ago", folder: "Documents" },
-  { id: 2, name: "Design Mockups.fig", type: "figma", size: "12.8 MB", modified: "1 day ago", folder: "Design" },
-  { id: 3, name: "API Documentation.md", type: "markdown", size: "156 KB", modified: "3 days ago", folder: "Documents" },
-  { id: 4, name: "Screenshot_2024.png", type: "image", size: "4.2 MB", modified: "1 week ago", folder: "Images" },
-  { id: 5, name: "Meeting Notes.docx", type: "word", size: "89 KB", modified: "2 weeks ago", folder: "Documents" },
-  { id: 6, name: "Budget_Q2.xlsx", type: "excel", size: "245 KB", modified: "1 month ago", folder: "Finance" },
-]
+interface FileData {
+  id: string
+  name: string
+  type: string
+  size: number
+  folder: string | null
+  storagePath: string
+  url: string
+  uploadedBy: string
+  uploadedAt: string
+}
 
-const folders = [
-  { id: 1, name: "Documents", count: 24 },
-  { id: 2, name: "Design", count: 18 },
-  { id: 3, name: "Images", count: 45 },
-  { id: 4, name: "Finance", count: 12 },
-]
+interface FolderData {
+  id: string
+  name: string
+  count: number
+  createdBy: string
+  createdAt: string
+}
 
 export default function FilesPage() {
+  const params = useParams()
+  const workspaceId = params.id as string
+
   const [view, setView] = useState<"grid" | "list">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
+  const [files, setFiles] = useState<FileData[]>([])
+  const [folders, setFolders] = useState<FolderData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFolder, setSelectedFolder] = useState<string>("")
+  const [newFolderName, setNewFolderName] = useState("")
+
+  // Fetch files and folders
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+
+      // Fetch files
+      const filesRes = await fetchWithAuth(`/api/workspaces/${workspaceId}/files`)
+      if (filesRes.ok) {
+        const filesData = await filesRes.json()
+        setFiles(filesData.files || [])
+      }
+
+      // Fetch folders
+      const foldersRes = await fetchWithAuth(`/api/workspaces/${workspaceId}/folders`)
+      if (foldersRes.ok) {
+        const foldersData = await foldersRes.json()
+        setFolders(foldersData.folders || [])
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error)
+      toast.error("Failed to fetch files and folders")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (workspaceId) {
+      fetchData()
+    }
+  }, [workspaceId])
 
   const filteredFiles = files.filter(file =>
     file.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const getFileIcon = (type: string) => {
-    switch (type) {
-      case "pdf":
-      case "word":
-      case "markdown":
-        return FileText
-      case "image":
-        return ImageIcon
-      default:
-        return File
+    if (type.includes("pdf") || type.includes("document") || type.includes("text")) {
+      return FileText
     }
+    if (type.includes("image")) {
+      return ImageIcon
+    }
+    return File
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i]
+  }
+
+  const formatDate = (date: string) => {
+    const now = new Date()
+    const fileDate = new Date(date)
+    const diffMs = now.getTime() - fileDate.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 60) return `${diffMins} minutes ago`
+    if (diffHours < 24) return `${diffHours} hours ago`
+    if (diffDays < 7) return `${diffDays} days ago`
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+    return `${Math.floor(diffDays / 30)} months ago`
+  }
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      toast.error("Please select a file")
+      return
+    }
+
+    try {
+      setUploading(true)
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+      if (selectedFolder) {
+        formData.append("folder", selectedFolder)
+      }
+
+      const response = await fetchWithAuthFormData(
+        `/api/workspaces/${workspaceId}/files`,
+        formData
+      )
+
+      if (response.ok) {
+        toast.success("File uploaded successfully")
+        setUploadDialogOpen(false)
+        setSelectedFile(null)
+        setSelectedFolder("")
+        await fetchData()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to upload file")
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error)
+      toast.error("Failed to upload file")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      toast.error("Please enter a folder name")
+      return
+    }
+
+    try {
+      const response = await fetchWithAuth(`/api/workspaces/${workspaceId}/folders`, {
+        method: "POST",
+        body: JSON.stringify({ name: newFolderName }),
+      })
+
+      if (response.ok) {
+        toast.success("Folder created successfully")
+        setCreateFolderDialogOpen(false)
+        setNewFolderName("")
+        await fetchData()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to create folder")
+      }
+    } catch (error) {
+      console.error("Error creating folder:", error)
+      toast.error("Failed to create folder")
+    }
+  }
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!confirm("Are you sure you want to delete this file?")) return
+
+    try {
+      const response = await fetchWithAuth(`/api/workspaces/${workspaceId}/files/${fileId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast.success("File deleted successfully")
+        await fetchData()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to delete file")
+      }
+    } catch (error) {
+      console.error("Error deleting file:", error)
+      toast.error("Failed to delete file")
+    }
+  }
+
+  const handleDownloadFile = (url: string, name: string) => {
+    window.open(url, "_blank")
+    toast.success(`Downloading ${name}`)
   }
 
   return (
@@ -69,7 +234,7 @@ export default function FilesPage() {
           <h1 className="text-3xl font-bold mb-2">Files</h1>
           <p className="text-muted-foreground">Store and manage your team's documents and assets</p>
         </div>
-        
+
         <div className="flex gap-2">
           <Dialog open={createFolderDialogOpen} onOpenChange={setCreateFolderDialogOpen}>
             <DialogTrigger asChild>
@@ -88,14 +253,19 @@ export default function FilesPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="folder-name">Folder Name</Label>
-                  <Input id="folder-name" placeholder="e.g., Project Files" />
+                  <Input
+                    id="folder-name"
+                    placeholder="e.g., Project Files"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                  />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateFolderDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => setCreateFolderDialogOpen(false)}>Create</Button>
+                <Button onClick={handleCreateFolder}>Create</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -114,18 +284,39 @@ export default function FilesPage() {
                   Choose files to upload to your workplace
                 </DialogDescription>
               </DialogHeader>
-              <div className="py-8">
-                <div className="border-2 border-dashed rounded-lg p-12 text-center hover:bg-accent/50 transition-colors cursor-pointer">
-                  <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-sm font-medium mb-1">Click to upload or drag and drop</p>
-                  <p className="text-xs text-muted-foreground">PDF, DOC, PNG, JPG up to 50MB</p>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="file-input">Select File</Label>
+                  <Input
+                    id="file-input"
+                    type="file"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="folder-select">Folder (Optional)</Label>
+                  <select
+                    id="folder-select"
+                    className="w-full p-2 border rounded-md"
+                    value={selectedFolder}
+                    onChange={(e) => setSelectedFolder(e.target.value)}
+                  >
+                    <option value="">No folder</option>
+                    {folders.map((folder) => (
+                      <option key={folder.id} value={folder.name}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => setUploadDialogOpen(false)}>Upload</Button>
+                <Button onClick={handleFileUpload} disabled={uploading}>
+                  {uploading ? "Uploading..." : "Upload"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -159,30 +350,36 @@ export default function FilesPage() {
       </div>
 
       {/* Folders */}
-      <div>
-        <h2 className="text-sm font-semibold mb-3">Folders</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {folders.map((folder) => (
-            <Card key={folder.id} className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                  <Folder className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{folder.name}</p>
-                  <p className="text-xs text-muted-foreground">{folder.count} files</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      {folders.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold mb-3">Folders</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {folders.map((folder) => (
+              <Card key={folder.id} className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                    <Folder className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{folder.name}</p>
+                    <p className="text-xs text-muted-foreground">{folder.count} files</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Files */}
       <div>
         <h2 className="text-sm font-semibold mb-3">Recent Files</h2>
-        
-        {view === "list" ? (
+
+        {loading ? (
+          <p className="text-center text-muted-foreground py-8">Loading files...</p>
+        ) : filteredFiles.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">No files found</p>
+        ) : view === "list" ? (
           <Card>
             <CardContent className="p-0">
               <div className="divide-y">
@@ -195,17 +392,32 @@ export default function FilesPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{file.name}</p>
-                        <p className="text-sm text-muted-foreground">{file.folder}</p>
+                        <p className="text-sm text-muted-foreground">{file.folder || "Root"}</p>
                       </div>
-                      <div className="text-sm text-muted-foreground">{file.size}</div>
-                      <div className="text-sm text-muted-foreground">{file.modified}</div>
+                      <div className="text-sm text-muted-foreground">{formatFileSize(file.size)}</div>
+                      <div className="text-sm text-muted-foreground">{formatDate(file.uploadedAt)}</div>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => handleDownloadFile(file.url, file.name)}
+                        >
                           <Download className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => handleDeleteFile(file.id)}>
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   )
@@ -224,9 +436,27 @@ export default function FilesPage() {
                       <Icon className="w-12 h-12 text-muted-foreground" />
                     </div>
                     <p className="font-medium text-sm truncate mb-1">{file.name}</p>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{file.size}</span>
-                      <span>{file.modified}</span>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                      <span>{formatFileSize(file.size)}</span>
+                      <span>{formatDate(file.uploadedAt)}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleDownloadFile(file.url, file.name)}
+                      >
+                        <Download className="w-3 h-3 mr-1" />
+                        Download
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteFile(file.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
